@@ -7,21 +7,27 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.flutter.plugin.common.BinaryMessenger;
+import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import java.util.ArrayList;
-import java.util.Map;
 
 /** Forwards incoming {@link MethodCall}s to {@link IntentSender#send}. */
-public final class MethodCallHandlerImpl implements MethodCallHandler {
+public final class MethodCallHandlerImpl implements MethodCallHandler, EventChannel.StreamHandler {
   private static final String TAG = "MethodCallHandlerImpl";
   private final IntentSender sender;
   @Nullable private MethodChannel methodChannel;
+  @Nullable private EventChannel eventChannel;
+  @Nullable private EventChannel.EventSink eventSink;
 
   /**
    * Uses the given {@code sender} for all incoming calls.
@@ -48,6 +54,8 @@ public final class MethodCallHandlerImpl implements MethodCallHandler {
 
     methodChannel = new MethodChannel(messenger, "dev.fluttercommunity.plus/android_intent");
     methodChannel.setMethodCallHandler(this);
+    eventChannel = new EventChannel(messenger, "dev.fluttercommunity.plus/android_intent_event");
+    eventChannel.setStreamHandler(this);
   }
 
   /**
@@ -63,6 +71,8 @@ public final class MethodCallHandlerImpl implements MethodCallHandler {
 
     methodChannel.setMethodCallHandler(null);
     methodChannel = null;
+    eventChannel.setStreamHandler(null);
+    eventChannel = null;
   }
 
   /**
@@ -104,9 +114,37 @@ public final class MethodCallHandlerImpl implements MethodCallHandler {
       result.success(null);
     } else if ("canResolveActivity".equalsIgnoreCase(call.method)) {
       result.success(sender.canResolveActivity(intent));
+    } else if ("launchForResult".equalsIgnoreCase(call.method)) {
+      sender.sendForResult(intent);
+
+      result.success(null);
     } else {
       result.notImplemented();
     }
+  }
+
+  @Override
+  public void onListen(Object arguments, EventChannel.EventSink eventSink) {
+    this.eventSink = eventSink;
+  }
+
+  @Override
+  public void onCancel(Object arguments) {
+    eventSink = null;
+  }
+
+  public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
+    if (eventSink != null) {
+      final Map<String, Object> result = new HashMap<>();
+      result.put("resultCode", resultCode);
+      if (data != null) {
+        if (data.getData() != null) {
+          result.put("data", data.getDataString());
+        }
+      }
+      eventSink.success(result);
+    }
+    return true;
   }
 
   private static String convertAction(String action) {
