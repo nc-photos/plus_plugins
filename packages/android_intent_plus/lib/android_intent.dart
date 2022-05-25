@@ -9,6 +9,28 @@ import 'package:meta/meta.dart';
 import 'package:platform/platform.dart';
 
 const String _kChannelName = 'dev.fluttercommunity.plus/android_intent';
+const String _kEventChannelName =
+    'dev.fluttercommunity.plus/android_intent_event';
+
+class AndroidIntentResult {
+  const AndroidIntentResult(
+    this.resultCode, {
+    this.data,
+  });
+
+  @override
+  toString() {
+    var product = "$runtimeType {"
+        "resultCode: $resultCode, ";
+    if (data != null) {
+      product += "data: $data, ";
+    }
+    return product + "}";
+  }
+
+  final int resultCode;
+  final String? data;
+}
 
 /// Flutter plugin for launching arbitrary Android Intents.
 ///
@@ -44,6 +66,7 @@ class AndroidIntent {
   })  : assert(action != null || componentName != null,
             'action or component (or both) must be specified'),
         _channel = const MethodChannel(_kChannelName),
+        _eventChannel = const EventChannel(_kEventChannelName),
         _platform = platform ?? const LocalPlatform();
 
   /// This constructor is only exposed for unit testing. Do not rely on this in
@@ -52,6 +75,7 @@ class AndroidIntent {
   AndroidIntent.private({
     required Platform platform,
     required MethodChannel channel,
+    required EventChannel eventChannel,
     this.action,
     this.flags,
     this.category,
@@ -64,6 +88,7 @@ class AndroidIntent {
   })  : assert(action != null || componentName != null,
             'action or component (or both) must be specified'),
         _channel = channel,
+        _eventChannel = eventChannel,
         _platform = platform;
 
   /// This is the general verb that the intent should attempt to do. This
@@ -113,6 +138,7 @@ class AndroidIntent {
   /// See https://developer.android.com/reference/android/content/Intent.html#setComponent(android.content.ComponentName).
   final String? componentName;
   final MethodChannel _channel;
+  final EventChannel _eventChannel;
   final Platform _platform;
 
   /// Set an explicit MIME data type.
@@ -161,6 +187,29 @@ class AndroidIntent {
 
     await const MethodChannel(_kChannelName)
         .invokeMethod<void>('parseAndLaunch', {'uri': uri});
+  }
+
+  Future<AndroidIntentResult?> launchForResult() async {
+    if (!_platform.isAndroid) {
+      return null;
+    }
+
+    final stream = _eventChannel
+        .receiveBroadcastStream()
+        .map((event) {
+          if (event is Map) {
+            return AndroidIntentResult(
+              event["resultCode"],
+              data: event["data"],
+            );
+          } else {
+            return event;
+          }
+        })
+        .where((event) => event is AndroidIntentResult)
+        .cast<AndroidIntentResult>();
+    _channel.invokeMethod<void>('launchForResult', _buildArguments());
+    return await stream.first;
   }
 
   /// Launch the intent with 'createChooser(intent, title)'.

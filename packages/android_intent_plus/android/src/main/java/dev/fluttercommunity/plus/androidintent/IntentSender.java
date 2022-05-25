@@ -18,6 +18,7 @@ import java.util.Map;
 /** Forms and launches intents. */
 public final class IntentSender {
   private static final String TAG = "IntentSender";
+  static final int REQUEST_CODE = 1274315;
 
   @Nullable private Activity activity;
   @Nullable private Context applicationContext;
@@ -77,6 +78,21 @@ public final class IntentSender {
     } else {
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       applicationContext.startService(intent);
+    }
+  }
+
+  void sendForResult(Intent intent) {
+    if (applicationContext == null) {
+      Log.wtf(TAG, "Trying to send an intent before the applicationContext was initialized.");
+      return;
+    }
+
+    Log.v(TAG, "Sending intent " + intent);
+
+    if (activity != null) {
+      activity.startActivityForResult(intent, REQUEST_CODE);
+    } else {
+      Log.wtf(TAG, "Trying to send an intent before the activity was started.");
     }
   }
 
